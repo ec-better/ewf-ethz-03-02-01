@@ -1,0 +1,256 @@
+#!/opt/anaconda/bin/python
+
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
+import os
+import io
+import shutil
+import atexit
+from nbconvert.preprocessors import ExecutePreprocessor, CellExecutionError
+import nbformat as nbf
+import uuid
+import ast
+
+sys.path.append('/opt/anaconda/bin/')
+import cioppy
+ciop = cioppy.Cioppy()
+
+# define the exit codes
+SUCCESS = 0
+ERR_NB_RUNTIME=10
+
+references = []
+identifiers = []
+enclosures = []
+local_files = []  
+
+# add a trap to exit gracefully
+def clean_exit(exit_code):
+    log_level = 'INFO'
+    if exit_code != SUCCESS:
+        log_level = 'ERROR'  
+   
+    msg = {SUCCESS: 'Processing successfully concluded',
+           ERR_NB_RUNTIME: 'Failed to run notebook'
+    }
+ 
+    ciop.log(log_level, msg[exit_code])  
+
+def parametrize():
+
+    global nb
+        
+    for index, cell in enumerate(nb['cells']):
+       
+        if str(cell['cell_type']) == 'code': 
+        
+            try:
+                root_ast = ast.parse(str(cell['source']))
+                names = list({node.id for node in ast.walk(root_ast) if isinstance(node, ast.Name)})
+                
+                if len(names) == 1:
+                    
+                    if names[0] == 'data_path':
+                        ciop.log('INFO', 'cell %s updated with \'data_path\' value %s' % (index, tmp_dir))
+                        cell['source'] = 'data_path = \'%s\'' % tmp_dir  
+                
+                    if names[0] == 'input_identifiers':
+                        ciop.log('INFO', 'cell %s updated with \'input_identifiers\' value %s' % (index, identifiers))
+                        cell['source'] = 'input_identifiers = %s' % identifiers  
+                
+                    if names[0] == 'input_references':
+                        ciop.log('INFO', 'cell %s updated with \'input_references\' value %s' % (index, references))
+                        cell['source'] = 'input_references = %s' % references  
+                
+                if len(names) != 2:
+                    continue
+                
+                if names[0] == 'dict' or names[1] == 'dict':
+                    
+                    # deal with the alphabetical order
+                    if names[1] == 'dict': 
+                        names[1] = names[0]
+                        names[0] = 'dict'
+                
+                    exec(str(cell['source'])) in globals(), locals()
+                
+                    if names[0] == 'dict' and 'title' in eval(names[1]).keys() and 'abstract' in eval(names[1]).keys() and 'id' in eval(names[1]).keys() and 'value' in eval(names[1]).keys():
+                                      
+                        eval(names[1])['value'] = ciop.getparam(eval(names[1])['id'])
+    
+                        new_source = 'dict(['
+
+                        for i, keys in enumerate(eval(names[1])):
+                            if i == 0: 
+                                new_source = new_source + '( "%s", "%s")' % (keys, eval(names[1])[keys]) 
+                            else:
+                                new_source = new_source + ',( "%s", "%s")' % (keys, eval(names[1])[keys]) 
+        
+                        new_source = new_source + '])'
+    
+                        cell['source'] = '%s = %s' % (names[1], new_source)
+         
+                        ciop.log('INFO', 'cell %s %s updated' % (index, names[1]))
+                    
+            except SyntaxError:
+                continue   
+
+def reproducibility():
+    
+    ciop.log('INFO', 'Create stage-in notebook for reproducibility')
+    
+    global tmp_dir
+        
+    nb_stagein = nbf.v4.new_notebook()
+    code = []
+      
+    code.append(nbf.v4.new_code_cell("""\
+import os
+import sys
+sys.path.append('/opt/anaconda/bin/')
+import cioppy
+ciop = cioppy.Cioppy()"""))
+    
+    code.append(nbf.v4.new_code_cell('tmp_dir = "' + tmp_dir + '"'))
+    code.append(nbf.v4.new_code_cell('os.makedirs(tmp_dir)'))
+    
+    for reference in references:
+      code.append(nbf.v4.new_code_cell('reference = "' + reference + '"'))
+      code.append(nbf.v4.new_code_cell("search = ciop.search(end_point = reference, params = [], output_fields='enclosure,identifier', model='GeoTime')"))
+      code.append(nbf.v4.new_code_cell("retrieved = ciop.copy(search[0]['enclosure'], tmp_dir)"))
+      code.append(nbf.v4.new_code_cell("assert(retrieved)"))
+        
+    nb_stagein['cells'] = code
+    fname = 'stage-in.ipynb'
+    with open(fname, 'w') as f:
+      nbf.write(nb_stagein, f)  
+        
+def stage_in():
+ 
+    for reference in references:
+      ciop.log('INFO', 'The input reference is: ' + reference)    
+      
+      search = ciop.search(end_point = reference, params = [], output_fields='enclosure,identifier', model='GeoTime')
+      assert(search), sys.exit(ERR_RESOLUTION)
+  
+      ciop.log('INFO', 'Retrieve %s from %s' % (search[0]['identifier'], search[0]['enclosure']))
+      retrieved = ciop.copy(search[0]['enclosure'], tmp_dir)
+      assert(retrieved), sys.exit(ERR_STAGEIN)
+
+      identifiers.append(search[0]['identifier'])
+      enclosures.append(search[0]['enclosure'])
+      local_files.append(retrieved) 
+
+def execute(nb_source, nb_target, kernel = 'python2'):
+    
+    global nb
+   
+    nb = nbf.read(nb_source, 4)
+    
+    ciop.log('INFO', 'Execute notebook')
+    
+    parametrize()
+    
+    # execute the notebook
+    ep = ExecutePreprocessor(timeout=None, kernel_name=kernel)
+
+    
+    try:
+      out = ep.preprocess(nb, {'metadata': {'path': './'}})
+    except CellExecutionError as e:
+      out = None
+      ciop.log('ERROR', 'Error executing the notebook "%s".' % nb_source)
+      ciop.log('ERROR', 'Message: %s' % str(e))
+      ciop.log('ERROR', 'STDOUT content  ----------------')
+      with open(runtime + '/stdout.txt', 'rb') as file:
+	text = file.read()
+        ciop.log('ERROR', text)
+        file.close()
+      ciop.log('ERROR', 'STDERR content ----------------')
+      with open(runtime + '/stderr.txt', 'rb') as file:
+        text = file.read()
+        ciop.log('ERROR', text)
+        file.close()
+      ciop.log('ERROR', 'END ----------------')
+
+      with io.open(nb_target, 'wb') as file:
+        file.write(nbf.writes(nb))
+        file.close()
+      
+      ciop.publish(nb_target, metalink=True)
+      raise
+    finally:
+      ciop.log('INFO', 'Write notebook')  
+      with io.open(nb_target, 'wb') as file:
+        file.write(nbf.writes(nb))
+        file.close()   
+
+def publish():
+   
+    # publish
+    ciop.log('INFO', 'Publishing ') 
+    ciop.publish(runtime, metalink=True, recursive=True) 
+
+def clean_up():
+           
+    # clean-up 
+    shutil.rmtree(runtime)
+    shutil.rmtree(os.path.split(tmp_dir)[0])
+    
+def main():
+
+    global runtime
+    runtime = os.path.join(ciop.tmp_dir, str(uuid.uuid4()))    
+
+    ciop.log('DEBUG', 'The runtime folder is %s' % (runtime))
+    os.makedirs(runtime)
+    os.chdir(runtime) 
+    
+    # create the folder for the data stage-in
+    global tmp_dir
+    tmp_dir = os.path.join('/tmp', 'workspace-' + str(uuid.uuid4()), 'data') 
+    os.makedirs(tmp_dir)
+  
+    # Loops over all the inputs
+    for reference in sys.stdin:
+      references.append(reference.rstrip())
+    
+    # stage-in the data
+    stage_in()
+    
+    # create the reproducibility notebook for data stage-in
+    reproducibility()     
+    
+    # execute the notebook
+    nb_source = os.path.join('/application', 'notebook', 'libexec', 'input.ipynb')
+    nb_target = os.path.join(runtime, 'result.ipynb')  
+
+    try:
+      execute(nb_source, nb_target, 'python2') 
+    except Exception, e:
+      out = None
+      ciop.log('ERROR', 'Error executing the notebook "%s".' % nb_source)
+
+      with io.open(nb_target, 'wb') as file:
+        file.write(nbf.writes(nb))
+        file.close()
+
+      ciop.publish(nb_target, metalink=True)
+      raise 
+    finally:
+      # publish the results
+      publish()
+    
+      # clean-up
+      clean_up()
+     
+try:
+  main()
+except SystemExit as e:
+  if e.args[0]:
+    clean_exit(e.args[0])
+  raise
+else:
+  atexit.register(clean_exit, 0)
+

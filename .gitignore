@@ -1,0 +1,13 @@
+target
+__pycache__
+*.pyc
+.cache
+
+runc
+.ipynb_checkpoints
+Untitled.ipynb
+TEST.ipynb
+application.xml
+*.tif
+S1*.xml
+*.properties

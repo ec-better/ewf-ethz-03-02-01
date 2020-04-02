@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.deimos</groupId>
+  <artifactId>ewf-ethz-03-02-01</artifactId>
+  <packaging>pom</packaging>
+  <name>ewf-ethz-03-02-01</name>
+  <parent>
+    <groupId>com.terradue</groupId>
+    <artifactId>dcs-python-parent</artifactId>
+    <version>2.0.0</version>
+  </parent>
+  <description>ETHZ-03-02-01 Map of b0 changes</description>
+  <version>0.1-SNAPSHOT</version>
+  <properties>
+    <summary>ETHZ-03-02-01 Map of b0 changes</summary>
+    <description>ETHZ-03-02-01 Map of b0 changes</description>
+    <community>ec-better</community>
+    <yumRepo>ec-better</yumRepo>
+  </properties>
+  <scm>
+    <connection>scm:git:ssh://git@github.com/ec-better/ewf-ethz-03-02-01</connection>
+    <developerConnection>scm:git:ssh://git@github.com/ec-better/ewf-ethz-03-02-01</developerConnection>
+    <url>https://github.com/ec-better/ewf-ethz-03-02-01</url>
+    <tag>HEAD</tag>
+  </scm>
+  <profiles>
+    <profile>
+      <id>install-and-test</id>
+      <activation>
+        <property>
+          <name>env</name>
+          <value>sandbox</value>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>1.3.1</version>
+            <executions>
+              <execution>
+                <id>Application descriptor generation</id>
+                <phase>validate</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>app_descriptor_generator</executable>
+                  <arguments>
+                    <argument>${basedir}/src/main/app-resources/application_template.xml</argument>
+                    <argument>${basedir}/src/main/app-resources/application.xml</argument>
+                    <argument>${basedir}/src/main/app-resources/notebook/libexec/input.ipynb</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>package-app</id>
+      <activation>
+        <property>
+          <name>env</name>
+          <value>ci</value>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>1.3.1</version>
+            <executions>
+              <execution>
+                <id>application.xml generation</id>
+                <phase>validate</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>app_descriptor_generator</executable>
+                  <arguments>
+                    <argument>${basedir}/src/main/app-resources/application_template.xml</argument>
+                    <argument>${basedir}/src/main/app-resources/application.xml</argument>
+                    <argument>${basedir}/src/main/app-resources/notebook/libexec/input.ipynb</argument>
+                  </arguments>
+                  <!--<outputFile>${basedir}/src/main/app-resources/dependencies/python/packages.list</outputFile>-->
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>rpm-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>generate-rpm</id>
+                <goals>
+                  <goal>rpm</goal>
+                </goals>
+                <configuration>
+                  <!-- Set here the dependencies installed with 'sudo yum install'-->
+                  <requires>
+                    <require>fftw</require>
+                    <require>miniconda</require>
+                    <require>OTB</require>
+                    <require>java-1.8.0-openjdk-devel</require>
+                    <require>snap6</require>
+                  </requires>
+                  <postinstallScriptlet combine.self="override">
+                    <script>conda update conda -y &amp;&amp; conda install -y --file /application/dependencies/python/packages.list &amp;&amp; cp /application/notebook/etc/snappy.ini /opt/anaconda/lib/python2.7/site-packages/snappy/snappy.ini</script>
+                  </postinstallScriptlet>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
