@@ -115,7 +115,7 @@ libnetcdf=4.4.1=0
 libpng=1.6.32=hda9c8bc_2
 libpq=9.5.4=0
 libsodium=1.0.10=0
-libspatialindex=1.8.5=1
+libspatialindex=1.8.5=h20b78c2_2
 libstdcxx-ng=7.2.0=h7a57d05_2
 libtiff=4.0.6=2
 libxcb=1.12=1
