@@ -10,4 +10,6 @@ TEST.ipynb
 application.xml
 *.tif
 S1*.xml
-*.properties
+*.tif.properties
+result.properties
+stage-in.properties
