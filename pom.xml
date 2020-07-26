@@ -11,7 +11,7 @@
     <version>2.0.0</version>
   </parent>
   <description>ETHZ-03-02-01 Map of b0 changes</description>
-  <version>0.5</version>
+  <version>0.6</version>
   <properties>
     <summary>ETHZ-03-02-01 Map of b0 changes</summary>
     <description>ETHZ-03-02-01 Map of b0 changes</description>
@@ -112,7 +112,7 @@
                     <require>snap6</require>
                   </requires>
                   <postinstallScriptlet combine.self="override">
-                    <script>conda update conda -y &amp;&amp; conda install -y --file /application/dependencies/python/packages.list &amp;&amp; cp /application/notebook/etc/snappy.ini /opt/anaconda/lib/python2.7/site-packages/snappy/snappy.ini</script>
+                    <script>conda update conda -y &amp;&amp; conda install -y --file /application/dependencies/python/packages.list &amp;&amp; cp /application/notebook/etc/snappy.ini /opt/anaconda/lib/python2.7/site-packages/snappy/snappy.ini &amp;&amp; cp /application/notebook/etc/snap.auxdata.properties /opt/snap6/etc/snap.auxdata.properties</script>
                   </postinstallScriptlet>
                 </configuration>
               </execution>
